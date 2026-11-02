@@ -1,0 +1,293 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAMN CLICKER</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#090d12;color:#effff7;font-family:Arial,sans-serif}
+header{padding:20px;text-align:center;letter-spacing:4px;color:#82ffc0}
+main{max-width:750px;margin:auto;padding:15px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.panel{background:#141e25;border:1px solid #294337;border-radius:13px;padding:15px}
+small{color:#91a99d}
+strong{display:block;font-size:22px;margin-top:8px}
+.center{text-align:center;padding:25px 0}
+#core{width:170px;height:170px;border-radius:50%;background:radial-gradient(#3c8062,#102b20);border:3px solid #82ffc0;color:white;font-size:60px;font-weight:bold;box-shadow:0 0 40px #82ffc055}
+button{background:#1b3028;border:1px solid #47745d;color:#aaffd0;border-radius:10px;padding:12px;cursor:pointer;font-size:14px}
+button:active{transform:scale(.96)}
+.tabs{display:flex;gap:7px;overflow:auto;margin:20px 0}
+.tabs button{white-space:nowrap}
+.tabs .active{background:#28523c}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}
+.item{display:flex;flex-direction:column;gap:9px}
+.item p{font-size:12px;color:#9aafa3;line-height:1.5}
+.item button{width:100%}
+.item button:disabled{opacity:.35}
+.hidden{display:none!important}
+input{width:100%;padding:12px;background:#080e0b;border:1px solid #42634f;border-radius:9px;color:white;margin:7px 0}
+@media(max-width:500px){.grid{grid-template-columns:1fr}.stats strong{font-size:17px}}
+</style>
+</head>
+<body>
+<header><h2>RAMN CLICKER</h2></header>
+<main>
+<div class="stats">
+<div class="panel"><small>RAMN</small><strong id="coins">0</strong></div>
+<div class="panel"><small>PER CLICK</small><strong id="power">1</strong></div>
+<div class="panel"><small>PER SECOND</small><strong id="auto">0</strong></div>
+</div>
+
+<div class="center">
+<button id="core">R</button>
+<h2 id="total">0 RAMN</h2>
+<p>Tap the core to collect RAMN.</p>
+</div>
+
+<div class="tabs">
+<button class="active" data-tab="shop">Shop</button>
+<button data-tab="boosts">Boosts</button>
+<button data-tab="achievements">Achievements</button>
+<button data-tab="admin">Admin</button>
+</div>
+
+<section id="shop">
+<h3>UPGRADE STORE</h3>
+<div id="items" class="grid"></div>
+</section>
+
+<section id="boosts" class="hidden">
+<h3>BOOSTS</h3>
+<div id="boostItems" class="grid"></div>
+</section>
+
+<section id="achievements" class="hidden">
+<h3>ACHIEVEMENTS</h3>
+<div id="badges" class="grid"></div>
+</section>
+
+<section id="admin" class="hidden">
+<h3>ADMIN PANEL</h3>
+<div class="panel">
+<input id="code" type="password" placeholder="Admin access code">
+<button id="login">UNLOCK</button>
+<p id="message"></p>
+<div id="controls" class="hidden">
+<input id="amount" type="number" value="100000">
+<button id="give">GIVE RAMN</button>
+<button id="double">DOUBLE BALANCE</button>
+<button id="max">MAX UPGRADES</button>
+<button id="reset">RESET SAVE</button>
+<p>Demo admin panel. Access code is visible in the game's source.</p>
+</div>
+</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const fmt=n=>{
+if(n<1000)return Math.floor(n).toLocaleString();
+const units=["K","M","B","T","Qa","Qi","Sx","Sp","Oc","No"];
+let i=-1;
+while(n>=1000&&i<units.length-1){n/=1000;i++}
+return n.toFixed(1)+units[i];
+};
+
+const base=[
+["RAMN Finger",15,"click",1],
+["Copper Tap",75,"click",3],
+["Silver Tap",300,"click",8],
+["Gold Tap",1200,"click",20],
+["Quantum Tap",6000,"click",55],
+["Core Amplifier",25000,"click",140],
+["Dark Matter Tap",125000,"click",400],
+["Neon Overdrive",650000,"click",1200],
+["Tiny Miner",50,"auto",1],
+["Pocket Bot",220,"auto",3],
+["RAMN Drone",900,"auto",10],
+["Mining Rig",4000,"auto",30],
+["Server Farm",18000,"auto",90],
+["Quantum Server",85000,"auto",260],
+["Reactor",400000,"auto",800],
+["Fusion Plant",2000000,"auto",2400],
+["Dyson Array",12000000,"auto",8000],
+["Ramn Dimension",80000000,"auto",30000]
+];
+
+const upgrades=Array.from({length:100},(_,i)=>{
+const b=base[i%base.length];
+const tier=Math.floor(i/base.length);
+return {
+id:i,
+name:b[0]+(tier?" "+(tier+1):""),
+cost:Math.floor(b[1]*5.2**tier),
+type:b[2],
+power:b[3]*3.2**tier,
+owned:0
+};
+});
+
+const boosts=[
+["Double Tap",5000,2],
+["Turbo Core",25000,3],
+["RAMN Surge",250000,5],
+["Overclock",2500000,10]
+];
+
+let state={
+coins:0,click:1,auto:0,mult:1,
+clickMult:1,boosts:[],total:0,last:Date.now()
+};
+
+try{
+const saved=JSON.parse(localStorage.getItem("ramnSave"));
+if(saved)state={...state,...saved};
+}catch(e){}
+
+state.coins+=state.auto*state.mult*
+Math.min(3600,Math.max(0,(Date.now()-state.last)/1000));
+
+function save(){
+state.last=Date.now();
+localStorage.setItem("ramnSave",JSON.stringify(state));
+}
+
+function render(){
+$("coins").textContent=fmt(state.coins);
+$("total").textContent=fmt(state.coins)+" RAMN";
+$("power").textContent=fmt(state.click*state.clickMult*state.mult);
+$("auto").textContent=fmt(state.auto*state.mult);
+
+$("items").innerHTML=upgrades.map(u=>{
+const cost=Math.floor(u.cost*1.16**u.owned);
+return `
+<div class="panel item">
+<b>${u.name}</b>
+<p>+${fmt(u.power)} ${u.type==="click"?"click power":"RAMN per second"}<br>
+Owned: ${u.owned}</p>
+<button data-buy="${u.id}" ${state.coins<cost?"disabled":""}>
+BUY · ${fmt(cost)}
+</button>
+</div>`;
+}).join("");
+
+$("boostItems").innerHTML=boosts.map((b,i)=>`
+<div class="panel item">
+<b>${b[0]}</b>
+<p>Multiplier upgrade</p>
+<button data-boost="${i}"
+${state.boosts.includes(i)||state.coins<b[1]?"disabled":""}>
+${state.boosts.includes(i)?"PURCHASED":"BUY · "+fmt(b[1])}
+</button>
+</div>`).join("");
+
+const goals=[
+["First RAMN",state.total>=1],
+["Getting started",state.total>=100],
+["Pocket fortune",state.total>=1000],
+["Millionaire",state.total>=1000000],
+["Upgrade collector",upgrades.reduce((a,u)=>a+u.owned,0)>=10],
+["Automation nation",state.auto>=100]
+];
+
+$("badges").innerHTML=goals.map(g=>`
+<div class="panel">
+<b>${g[1]?"✓ ":""}${g[0]}</b>
+<p>${g[1]?"Unlocked":"Not unlocked"}</p>
+</div>`).join("");
+}
+
+function buy(id){
+const u=upgrades[id];
+const cost=Math.floor(u.cost*1.16**u.owned);
+if(state.coins<cost)return;
+state.coins-=cost;
+u.owned++;
+if(u.type==="click")state.click+=u.power;
+else state.auto+=u.power;
+save();render();
+}
+
+$("core").onclick=()=>{
+const gain=state.click*state.clickMult*state.mult;
+state.coins+=gain;
+state.total+=gain;
+render();
+};
+
+$("items").onclick=e=>{
+const b=e.target.closest("[data-buy]");
+if(b)buy(+b.dataset.buy);
+};
+
+$("boostItems").onclick=e=>{
+const b=e.target.closest("[data-boost]");
+if(!b)return;
+const i=+b.dataset.boost;
+const boost=boosts[i];
+if(state.coins<boost[1]||state.boosts.includes(i))return;
+state.coins-=boost[1];
+state.boosts.push(i);
+if(i===0)state.clickMult*=2;
+else if(i===1)state.auto*=3;
+else state.mult*=boost[2];
+save();render();
+};
+
+document.querySelectorAll("[data-tab]").forEach(btn=>{
+btn.onclick=()=>{
+document.querySelectorAll("[data-tab]").forEach(b=>b.classList.toggle("active",b===btn));
+["shop","boosts","achievements","admin"].forEach(id=>
+$(id).classList.toggle("hidden",id!==btn.dataset.tab));
+};
+});
+
+$("login").onclick=()=>{
+if($("code").value==="RamnsSecret101"){
+$("controls").classList.remove("hidden");
+$("message").textContent="ADMIN UNLOCKED";
+}else $("message").textContent="WRONG CODE";
+};
+
+$("give").onclick=()=>{
+state.coins+=Math.max(0,+$("amount").value||0);
+save();render();
+};
+
+$("double").onclick=()=>{
+state.coins*=2;save();render();
+};
+
+$("max").onclick=()=>{
+upgrades.forEach(u=>{
+if(!u.owned){
+u.owned=1;
+if(u.type==="click")state.click+=u.power;
+else state.auto+=u.power;
+}
+});
+save();render();
+};
+
+$("reset").onclick=()=>{
+if(confirm("Reset your save?")){
+localStorage.removeItem("ramnSave");
+location.reload();
+}
+};
+
+setInterval(()=>{
+const gain=state.auto*state.mult/10;
+state.coins+=gain;
+state.total+=gain;
+render();
+},100);
+
+setInterval(save,10000);
+render();
+</script>
+</body>
+</html>
